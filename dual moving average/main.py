@@ -1,6 +1,6 @@
 def init(context):
     context.i = 0
-    context.security = "000402.XSHE"
+    context.security = "000001.XSHE"
     context.hold = False
 
 def handle_bar(context, bar_dict):
