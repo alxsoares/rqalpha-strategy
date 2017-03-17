@@ -21,12 +21,24 @@ def reverse_code(old):
 
 def init(context):
     index = "000300"
-    df = pd.read_excel("%s/%s.xlsx"%(INDEX_COMPOMENT, index))
-    context.candidates = set([str(c) for c in df["code"].tolist()])
+    # df = pd.read_excel("%s/%s.xlsx"%(INDEX_COMPOMENT, index))
+    # context.candidates = set([str(c) for c in df["code"].tolist()])
     context.counter = 0
-    context.rolling_window = 7
     context.switch = 23
-    context.num_stocks = 3
+    # context.num_stocks = 30
+    # context.long = 60
+    # context.short = 10
+    context.s = "300104.SZ"
+    df = pd.read_excel("%s/%s.xlsx"%(BY_STOCK_DIR, context.s), index_col=0)
+    df = df[df.index >= "2016-03-01"]
+    df["current return"] = (df["close"] - df["avg cost"]) / df["avg cost"]
+    df["rolling current return"] = df["current return"].rolling(window=7).mean()
+    col_name = "rolling current return"
+    df["z-score"] = (df[col_name] - df[col_name].mean()) / df[col_name].std()
+    context.s = change_code(context.s)
+    context.df = df
+    context.threshold = 0.2
+    context.bought = False
 
 def rebalance(context, bar_dict):
     df = pd.read_excel("%s/%s.xlsx"%(BY_DATE_DIR, context.now.strftime("%Y-%m-%d")), index_col=0)
@@ -35,7 +47,10 @@ def rebalance(context, bar_dict):
     num = 0
     stocks_buy = []
     for stock, current_return in sorted_current_return:
-        if current_return < 0:
+        his = history_bars(stock, context.long, '1d', 'close')
+        long_mean = np.mean(his)
+        short_mean = np.mean(his[-context.short:])
+        if current_return < 0 and short_mean > long_mean:
             num += 1
             stocks_buy.append(stock)
         if num == context.num_stocks:
@@ -52,8 +67,17 @@ def rebalance(context, bar_dict):
         order_target_percent(stock, weight)
 
 def handle_bar(context, bar_dict):
-    if context.counter % context.switch == 0:
-        rebalance(context, bar_dict)
+    # if context.counter % context.switch == 0:
+        # rebalance(context, bar_dict)
+    z_score = context.df[context.df.index <= context.now]["z-score"][-1]
+    # logger.info(z_score)
+    if z_score < -context.threshold and not context.bought:
+        order_target_percent(context.s, 1)
+        context.bought = True
+
+    if z_score > context.threshold and context.bought:
+        order_target_percent(context.s, 0)
+        context.bought = False
 
 def after_trading(context):
     context.counter += 1
